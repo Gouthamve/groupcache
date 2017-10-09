@@ -27,6 +27,7 @@ package groupcache
 import (
 	"errors"
 	"math/rand"
+	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -415,6 +416,12 @@ func (c *cache) add(key string, value ByteView) {
 				val := value.(ByteView)
 				c.nbytes -= int64(len(key.(string))) + int64(val.Len())
 				c.nevict++
+
+				if val.f != nil {
+					// TODO(gouthamve): Do something about the errors.
+					val.f.Close()
+					os.Remove(val.f.Name())
+				}
 			},
 		}
 	}

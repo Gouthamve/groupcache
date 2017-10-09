@@ -39,6 +39,9 @@ type Sink interface {
 	// The caller retains ownership of m.
 	SetProto(m proto.Message) error
 
+	// SetView sets the byteview.
+	SetView(v ByteView) error
+
 	// view returns a frozen view of the bytes for caching.
 	view() (ByteView, error)
 }
@@ -50,20 +53,7 @@ func cloneBytes(b []byte) []byte {
 }
 
 func setSinkView(s Sink, v ByteView) error {
-	// A viewSetter is a Sink that can also receive its value from
-	// a ByteView. This is a fast path to minimize copies when the
-	// item was already cached locally in memory (where it's
-	// cached as a ByteView)
-	type viewSetter interface {
-		setView(v ByteView) error
-	}
-	if vs, ok := s.(viewSetter); ok {
-		return vs.setView(v)
-	}
-	if v.b != nil {
-		return s.SetBytes(v.b)
-	}
-	return s.SetString(v.s)
+	return s.SetView(v)
 }
 
 // StringSink returns a Sink that populates the provided string pointer.
@@ -91,6 +81,14 @@ func (s *stringSink) SetString(v string) error {
 
 func (s *stringSink) SetBytes(v []byte) error {
 	return s.SetString(string(v))
+}
+
+func (s *stringSink) SetView(v ByteView) error {
+	if v.b == nil {
+		return s.SetString(v.s)
+	}
+
+	return s.SetBytes(v.b)
 }
 
 func (s *stringSink) SetProto(m proto.Message) error {
@@ -124,7 +122,7 @@ type byteViewSink struct {
 	// using a Sink), it's okay to re-use the same one.
 }
 
-func (s *byteViewSink) setView(v ByteView) error {
+func (s *byteViewSink) SetView(v ByteView) error {
 	*s.dst = v
 	return nil
 }
@@ -153,11 +151,12 @@ func (s *byteViewSink) SetString(v string) error {
 }
 
 // ProtoSink returns a sink that unmarshals binary proto values into m.
-func ProtoSink(m proto.Message) Sink {
-	return &protoSink{
-		dst: m,
-	}
-}
+// TODO: Fix this.
+//func ProtoSink(m proto.Message) Sink {
+//return &protoSink{
+//dst: m,
+//}
+//}
 
 type protoSink struct {
 	dst proto.Message // authorative value
@@ -225,7 +224,7 @@ func (s *allocBytesSink) view() (ByteView, error) {
 	return s.v, nil
 }
 
-func (s *allocBytesSink) setView(v ByteView) error {
+func (s *allocBytesSink) SetView(v ByteView) error {
 	if v.b != nil {
 		*s.dst = cloneBytes(v.b)
 	} else {
@@ -271,9 +270,10 @@ func (s *allocBytesSink) SetString(v string) error {
 // bytes to *dst. If more bytes are available, they're silently
 // truncated. If fewer bytes are available than len(*dst), *dst
 // is shrunk to fit the number of bytes available.
-func TruncatingByteSliceSink(dst *[]byte) Sink {
-	return &truncBytesSink{dst: dst}
-}
+// TODO(gouthamve): Fix this def.
+//func TruncatingByteSliceSink(dst *[]byte) Sink {
+//return &truncBytesSink{dst: dst}
+//}
 
 type truncBytesSink struct {
 	dst *[]byte
@@ -340,7 +340,7 @@ func (s *truncOffsetBytesSink) view() (ByteView, error) {
 	return s.v, nil
 }
 
-func (s *truncOffsetBytesSink) setView(v ByteView) error {
+func (s *truncOffsetBytesSink) SetView(v ByteView) error {
 	if v.b != nil {
 		s.SetBytes(v.b)
 	} else {
@@ -370,7 +370,7 @@ func (s *truncOffsetBytesSink) SetBytes(b []byte) error {
 	return s.setBytesOwned(cloneBytes(b[s.offset:end]), b)
 }
 
-// TODO: This is a huuuge hack! We need all bytes to be stored in the cached so
+// TODO: This is a huuuge hack! We need all bytes to be stored in the cache so
 // we are populating the view wrong.
 func (s *truncOffsetBytesSink) setBytesOwned(populate []byte, view []byte) error {
 	if s.dst == nil {

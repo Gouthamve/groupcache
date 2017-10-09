@@ -20,7 +20,9 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
 	"strings"
+	"syscall"
 )
 
 // A ByteView holds an immutable view of bytes.
@@ -33,6 +35,30 @@ type ByteView struct {
 	// If b is non-nil, b is used, else s is used.
 	b []byte
 	s string
+
+	// The file backing the ByteView, if any.
+	f *os.File
+}
+
+func mmap(f *os.File, length int) ([]byte, error) {
+	return syscall.Mmap(int(f.Fd()), 0, length, syscall.PROT_READ, syscall.MAP_SHARED)
+}
+
+func NewFileBackedByteView(f *os.File) (ByteView, error) {
+	fi, err := f.Stat()
+	if err != nil {
+		return ByteView{}, err
+	}
+
+	b, err := mmap(f, int(fi.Size()))
+	if err != nil {
+		return ByteView{}, err
+	}
+	return ByteView{
+		b: b,
+
+		f: f,
+	}, nil
 }
 
 // Len returns the view's length.
